@@ -44,13 +44,15 @@ git push -u origin edgeone
 
 ### 4. 配置环境变量
 
-项目 → "设置" → "环境变量"，**只需要加 1 个**：
+项目 → "设置" → "环境变量"：
 
-| Key | Value | 说明 |
-| --- | --- | --- |
-| `SHARED_SECRET` | 与 NTEUID 后台 `NTELoginSecret` 一致 | 不填则关签名校验（启动时会 warn） |
+| Key | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `SHARED_SECRET` | 必填 | — | 与 NTEUID 后台 `NTELoginSecret` 一致；不填则关签名校验（启动会 warn） |
+| `SESSION_TTL_S` | 可选 | `600` | 会话存活秒数 |
+| `SIG_TTL_S` | 可选 | `300` | HMAC 签名时差容忍秒数 |
 
-老虎 `app_id` / `app_key`、会话 TTL、签名时差等已写死在代码里（与 Python 版 `ntelogin/constants.py` / `settings.py` 默认值一致）。要改去改源码 `edge-functions/nte/[[default]].js` 顶部的常量再 push。
+老虎 `app_id` / `app_key` 是业务常量，已写死在 `edge-functions/nte/[[default]].js` 顶部（与 Python 版 `ntelogin/constants.py` 一致），要改去改源码再 push。
 
 ### 5. 触发首次部署
 

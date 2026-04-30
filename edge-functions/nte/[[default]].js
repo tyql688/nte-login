@@ -10,17 +10,15 @@
 //
 // 依赖：
 //   * KV namespace 绑定到全局变量 `nte_kv`（在控制台 KV Storage → 绑定项目时配）
-//   * 环境变量：仅 SHARED_SECRET（控制台 → 环境变量，只配这 1 个）
+//   * 环境变量：SHARED_SECRET（必配）、SESSION_TTL_S / SIG_TTL_S（可选，留空走默认值）
 
 // ---------------------------------------------------------------------------
 // 配置
 // ---------------------------------------------------------------------------
 
-// 与 Python 版 ntelogin/constants.py / settings.py 保持一致：固定常量直接写死
+// 老虎接入参数：业务上的固定常量，与 Python 版 ntelogin/constants.py 一致，写死
 const LAOHU_APP_ID = "10550";
 const LAOHU_APP_KEY = "89155cc4e8634ec5b1b6364013b23e3e";
-const SESSION_TTL_S = 600;
-const SIG_TTL_S = 300;
 
 const LAOHU_BASE_URL = "https://user.laohu.com";
 const LAOHU_SDK_VERSION = "4.273.0";
@@ -34,13 +32,12 @@ const MOBILE_RE = /^1\d{10}$/;
 const CODE_RE = /^\d{4,8}$/;
 
 function readConfig(env) {
-  // 只有 SHARED_SECRET 是部署相关的（要跟 NTEUID 后台 NTELoginSecret 一致）
   return {
     sharedSecret: env.SHARED_SECRET || "",
     laohuAppId: LAOHU_APP_ID,
     laohuAppKey: LAOHU_APP_KEY,
-    sessionTtlS: SESSION_TTL_S,
-    sigTtlS: SIG_TTL_S,
+    sessionTtlS: parseInt(env.SESSION_TTL_S || "600", 10),
+    sigTtlS: parseInt(env.SIG_TTL_S || "300", 10),
   };
 }
 
