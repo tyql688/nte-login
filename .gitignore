@@ -29,3 +29,11 @@ dist/
 
 logs/
 *.log
+
+# AI 助手 / skill 配置（每人本地差异，不入库）
+.agents/
+.claude/
+.pi/
+.qwen/
+.trae/
+skills-lock.json
