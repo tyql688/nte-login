@@ -216,27 +216,35 @@ function newDevice() {
 // Session 存储（KV 没原生 TTL，把过期戳塞进 value）
 // ---------------------------------------------------------------------------
 
+// EdgeOne 不同时期文档对 KV 暴露位置说法不一；这里两条路径都试
+function resolveKv(context) {
+  try { if (typeof nte_kv !== "undefined") return nte_kv; } catch {}
+  if (context?.env?.nte_kv) return context.env.nte_kv;
+  if (typeof globalThis !== "undefined" && globalThis.nte_kv) return globalThis.nte_kv;
+  return null;
+}
+
 function sessionKey(auth) {
   return `sess:${auth}`;
 }
 
-async function getSession(auth) {
-  const raw = await nte_kv.get(sessionKey(auth), "json");
+async function getSession(kv, auth) {
+  const raw = await kv.get(sessionKey(auth), "json");
   if (!raw) return null;
   if (typeof raw.expires_at !== "number" || raw.expires_at <= Date.now()) {
     // 已过期，惰性清理
-    await nte_kv.delete(sessionKey(auth)).catch(() => {});
+    await kv.delete(sessionKey(auth)).catch(() => {});
     return null;
   }
   return raw;
 }
 
-async function putSession(session) {
-  await nte_kv.put(sessionKey(session.auth), JSON.stringify(session));
+async function putSession(kv, session) {
+  await kv.put(sessionKey(session.auth), JSON.stringify(session));
 }
 
-async function dropSession(auth) {
-  await nte_kv.delete(sessionKey(auth)).catch(() => {});
+async function dropSession(kv, auth) {
+  await kv.delete(sessionKey(auth)).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +397,7 @@ function htmlResponse(html, status = 200) {
   });
 }
 
-async function handleStart(request, cfg) {
+async function handleStart(request, cfg, kv) {
   let payload;
   try {
     payload = await request.json();
@@ -411,7 +419,7 @@ async function handleStart(request, cfg) {
     return jsonResponse({ detail: "bad_signature" }, 401);
   }
 
-  const existing = await getSession(payload.auth);
+  const existing = await getSession(kv, payload.auth);
   if (existing && existing.status === "pending") {
     return jsonResponse({ auth: payload.auth, expires_in_s: cfg.sessionTtlS });
   }
@@ -427,11 +435,11 @@ async function handleStart(request, cfg) {
     credential: null,
     expires_at: Date.now() + cfg.sessionTtlS * 1000,
   };
-  await putSession(session);
+  await putSession(kv, session);
   return jsonResponse({ auth: payload.auth, expires_in_s: cfg.sessionTtlS });
 }
 
-async function handleSendSms(request, cfg) {
+async function handleSendSms(request, cfg, kv) {
   let payload;
   try {
     payload = await request.json();
@@ -442,7 +450,7 @@ async function handleSendSms(request, cfg) {
   if (!MOBILE_RE.test(payload?.mobile || "")) {
     return jsonResponse({ ok: false, msg: "手机号格式错误" }, 400);
   }
-  const session = await getSession(payload?.auth || "");
+  const session = await getSession(kv, payload?.auth || "");
   if (!session) return jsonResponse({ detail: "session_expired" }, 404);
 
   try {
@@ -453,7 +461,7 @@ async function handleSendSms(request, cfg) {
   return jsonResponse({ ok: true, msg: "验证码已发送" });
 }
 
-async function handleLogin(request, cfg) {
+async function handleLogin(request, cfg, kv) {
   let payload;
   try {
     payload = await request.json();
@@ -467,7 +475,7 @@ async function handleLogin(request, cfg) {
   if (!CODE_RE.test(payload?.code || "")) {
     return jsonResponse({ ok: false, msg: "验证码格式错误" }, 400);
   }
-  const session = await getSession(payload?.auth || "");
+  const session = await getSession(kv, payload?.auth || "");
   if (!session) return jsonResponse({ detail: "session_expired" }, 404);
   if (session.status === "success") {
     return jsonResponse({ detail: "already_finished" }, 409);
@@ -479,7 +487,7 @@ async function handleLogin(request, cfg) {
   } catch (err) {
     session.status = "failed";
     session.msg = "验证码错误或已过期，请重新获取";
-    await putSession(session);
+    await putSession(kv, session);
     return jsonResponse({ ok: false, msg: "验证码错误或已过期，请重新获取" }, 400);
   }
 
@@ -489,30 +497,30 @@ async function handleLogin(request, cfg) {
     laohu_token: account.token,
     laohu_user_id: String(account.user_id),
   };
-  await putSession(session);
+  await putSession(kv, session);
   return jsonResponse({ ok: true, msg: "登录成功" });
 }
 
-async function handleStatus(auth, urlParams, cfg) {
+async function handleStatus(auth, urlParams, cfg, kv) {
   const ts = parseInt(urlParams.get("ts") || "0", 10);
   const sig = urlParams.get("sig") || "";
   if (!(await verifyListen(auth, ts, sig, cfg))) {
     return jsonResponse({ detail: "bad_signature" }, 401);
   }
 
-  const session = await getSession(auth);
+  const session = await getSession(kv, auth);
   if (!session) return jsonResponse({ status: "expired", msg: "", credential: null });
 
   const snap = { status: session.status, msg: session.msg, credential: session.credential };
   if (snap.status === "success" || snap.status === "failed") {
     // 终态被拿走后立刻丢弃，凭据是一次性的
-    await dropSession(auth);
+    await dropSession(kv, auth);
   }
   return jsonResponse(snap);
 }
 
-async function handleLoginPage(auth, cfg) {
-  const session = await getSession(auth);
+async function handleLoginPage(auth, cfg, kv) {
+  const session = await getSession(kv, auth);
   if (!session) return htmlResponse(NOT_FOUND_HTML, 404);
   if (session.status === "success") return htmlResponse(DONE_HTML);
   return htmlResponse(renderLogin(auth, session.user_id, cfg.sessionTtlS));
@@ -524,10 +532,21 @@ async function handleLoginPage(auth, cfg) {
 
 export async function onRequest(context) {
   const cfg = readConfig(context.env);
+  const kv = resolveKv(context);
 
-  // KV 绑定健康检查 —— 没绑会立刻显式报错，避免后续 ReferenceError
-  if (typeof nte_kv === "undefined") {
-    return jsonResponse({ detail: "kv_not_bound", hint: "在 EdgeOne 控制台 KV Storage 创建 namespace 并绑定到本项目，变量名设为 nte_kv" }, 500);
+  if (!kv) {
+    // KV 没解析到，把可见的位置都吐出来辅助排查
+    let globalHasIt = false;
+    try { globalHasIt = typeof nte_kv !== "undefined"; } catch {}
+    return jsonResponse({
+      detail: "kv_not_bound",
+      hint: "在 EdgeOne 控制台 KV Storage 创建 namespace 并绑定到本项目，变量名设为 nte_kv（绑定后需要重新部署一次让新绑定生效）",
+      debug: {
+        globalHasIt,
+        envKeys: Object.keys(context?.env || {}),
+        globalThisHasIt: typeof globalThis?.nte_kv !== "undefined",
+      },
+    }, 500);
   }
 
   const url = new URL(context.request.url);
@@ -535,16 +554,16 @@ export async function onRequest(context) {
   const method = context.request.method;
   const req = context.request;
 
-  if (method === "POST" && path === "/nte/start") return handleStart(req, cfg);
-  if (method === "POST" && path === "/nte/sendSmsCode") return handleSendSms(req, cfg);
-  if (method === "POST" && path === "/nte/login") return handleLogin(req, cfg);
+  if (method === "POST" && path === "/nte/start") return handleStart(req, cfg, kv);
+  if (method === "POST" && path === "/nte/sendSmsCode") return handleSendSms(req, cfg, kv);
+  if (method === "POST" && path === "/nte/login") return handleLogin(req, cfg, kv);
   if (method === "GET" && path === "/nte/done") return htmlResponse(DONE_HTML);
 
   let m = path.match(/^\/nte\/i\/([^/]+)$/);
-  if (method === "GET" && m) return handleLoginPage(decodeURIComponent(m[1]), cfg);
+  if (method === "GET" && m) return handleLoginPage(decodeURIComponent(m[1]), cfg, kv);
 
   m = path.match(/^\/nte\/status\/([^/]+)$/);
-  if (method === "GET" && m) return handleStatus(decodeURIComponent(m[1]), url.searchParams, cfg);
+  if (method === "GET" && m) return handleStatus(decodeURIComponent(m[1]), url.searchParams, cfg, kv);
 
   return new Response("Not Found", { status: 404 });
 }
