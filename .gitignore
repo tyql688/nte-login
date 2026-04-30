@@ -1,34 +1,12 @@
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
 .DS_Store
-
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.pyright/
-.cache/
-
-.venv/
-venv/
-ENV/
-env/
-
-.env
-.env.*
-!.env.example
-
-build/
-dist/
-*.egg-info/
-.eggs/
-
 .idea/
+.vscode/
 
 logs/
 *.log
+
+.env
+.env.*
 
 # AI 助手 / skill 配置（每人本地差异，不入库）
 .agents/
@@ -37,3 +15,12 @@ logs/
 .qwen/
 .trae/
 skills-lock.json
+
+# edgeone CLI 本地副产物
+node_modules/
+.edgeone/
+
+# 切回 main 分支跑 Python 时会留下的本地副产物
+__pycache__/
+*.pyc
+*.egg-info/

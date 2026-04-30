@@ -26,8 +26,6 @@ const LAOHU_USER_AGENT = "okhttp/4.9.0";
 const LAOHU_DEFAULT_PACKAGE = "com.pwrd.htassistant";
 const LAOHU_DEFAULT_VERSION_CODE = "12";
 
-const TERMINAL_STATUS = new Set(["success", "failed", "expired"]);
-
 const MOBILE_RE = /^1\d{10}$/;
 const CODE_RE = /^\d{4,8}$/;
 
@@ -304,10 +302,8 @@ async function laohuSubmit(path, params, cfg, { keepEmpty = false } = {}) {
   });
 
   const text = await resp.text();
-  if (resp.status >= 400) {
-    throw new LaohuError(`[${path}] HTTP ${resp.status}`, { status_code: resp.status, text });
-  }
-  if (!text) throw new LaohuError(`[${path}] 响应为空`);
+  if (resp.status >= 400) throw new Error(`[${path}] HTTP ${resp.status}`);
+  if (!text) throw new Error(`[${path}] 响应为空`);
 
   let payload;
   try {
@@ -316,17 +312,8 @@ async function laohuSubmit(path, params, cfg, { keepEmpty = false } = {}) {
     return text;
   }
   const code = payload?.code;
-  if (code !== 0 && code !== "0") {
-    throw new LaohuError(`[${path}] ${payload?.message || ""}`, payload);
-  }
+  if (code !== 0 && code !== "0") throw new Error(`[${path}] ${payload?.message || ""}`);
   return payload?.result ?? {};
-}
-
-class LaohuError extends Error {
-  constructor(message, raw) {
-    super(message);
-    this.raw = raw;
-  }
 }
 
 async function laohuSendSms(cellphone, cfg, device) {
@@ -356,11 +343,11 @@ async function laohuLoginBySms(cellphone, code, cfg, device) {
   const result = await laohuSubmit("/openApi/sms/new/login", params, cfg, { keepEmpty: true });
   const userIdRaw = result?.userId;
   const tokenRaw = result?.token;
-  if (userIdRaw == null || tokenRaw == null) throw new LaohuError("老虎登录返回缺少 userId/token", result);
+  if (userIdRaw == null || tokenRaw == null) throw new Error("老虎登录返回缺少 userId/token");
   const token = String(tokenRaw);
-  if (!token) throw new LaohuError("老虎登录返回 token 为空", result);
+  if (!token) throw new Error("老虎登录返回 token 为空");
   const userId = parseInt(userIdRaw, 10);
-  if (!Number.isFinite(userId) || userId <= 0) throw new LaohuError("老虎登录返回 userId 无效", result);
+  if (!Number.isFinite(userId) || userId <= 0) throw new Error("老虎登录返回 userId 无效");
   return { user_id: userId, token };
 }
 
