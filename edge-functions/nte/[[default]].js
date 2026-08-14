@@ -1237,7 +1237,7 @@ const LOGIN_HTML = `<!doctype html>
       }
       if (!document.getElementById("loginContent").hidden) {
         validateTajiduoForm();
-        switchMode(new URLSearchParams(window.location.search).get("mode") === "wanmei" ? "wanmei" : "tajiduo");
+        switchMode("tajiduo");
       }
     </script>
   </body>
