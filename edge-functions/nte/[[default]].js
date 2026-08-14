@@ -1097,6 +1097,7 @@ const LOGIN_HTML = `<!doctype html>
             appId: "20047",
             capTicket: wanmeiCapTicket,
             bindBtn: "",
+            failCallback: resetCaptcha,
             onRefresh: resetCaptcha,
             initCallback: (failed) => {
               clearTimeout(timeoutId);
