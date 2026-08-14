@@ -1,6 +1,6 @@
 # nte-login（EdgeOne Pages 版）
 
-NTEUID 外置登录服务，跑在 EdgeOne Pages Edge Functions 上。Python 自部署版本在 `main` 分支。
+NTEUID 外置登录服务，支持塔吉多与完美世界短信登录。此分支运行在 EdgeOne Pages Edge Functions，Python 自部署版本在 `main` 分支。
 
 ## 一次性配置
 
